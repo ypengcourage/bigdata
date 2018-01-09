@@ -1,0 +1,342 @@
+一，集群规划
+【注意】：至少三台节点，主节点至少6G内存，另外两台至少4G内存，否则安装CDH5会因为运行环境不达标会报各种错误
+|--------------|-----------|-------------|----------------|-----------|--------------------|-------------|
+|主机/服务     |   Server  |    Agent    |     zookeeper  |  namenode | secondarynamenode  |   datanode  |
+|--------------|-----------|-------------|----------------|-----------|--------------------|-------------|	    
+|mini1 主节点  |    是     |     是      |        是      |    是     |                    |     是      |
+|--------------|-----------|-------------|----------------|-----------|--------------------|-------------|     
+|mini2 从节点  |           |     是      |        是      |           |     是             |     是      |
+|--------------|-----------|-------------|----------------|-----------|--------------------|-------------|    
+|mini3 从节点  |           |     是      |        是      |           |                    |     是      |
+|--------------|-----------|-------------|----------------|-----------|--------------------|-------------|
+
+
+二，linux系统环境准备
+
+1，安装linux centos6.5
+
+2，配置网络
+
+	2.1 命令： vi /etc/sysconfig/network-scripts/ifcfg-eth0	
+		如下配置：
+		ONBOOT=yes
+		BOOTPROTO=static
+		IPADDR=192.168.80.81
+		GATEWAY=192.168.80.1
+		NETMASK=255.255.255.0
+		DNS1=114.114.114.114
+	
+	2.2 重启网卡命令:service network restart
+	
+	2.3 拼百度：ping baidu.com 如果能拼通说明网络配置正确（网络不通，不能进行后面步骤）
+	
+	2.4 配置Ip与主机名映射，命令：vi /etc/hosts
+	
+		192.168.80.81 mini1
+		192.168.80.82 mini2
+		192.168.80.83 mini3
+
+		
+	2.5 禁用IPv6
+	 echo "alias net-pf-10 off" >> /etc/modprobe.d/dist.conf
+	 echo "alias ipv6 off" >> /etc/modprobe.d/dist.conf	
+
+3，增加普通用户
+	命令：useradd hadoop（增加用户）
+	命令：passwd hadoop （修改用户密码）
+	
+4，配置普通用户的sudo权限
+   命令：vi /etc/sudoers   
+   hadoop ALL=(root)NOPASSWD:ALL
+   
+5，关闭防火墙
+	service iptables stop （暂时关闭）
+	chkconfig iptables off（永久性关闭）
+	
+6，禁用Selinux
+	vi /etc/sysconfig/selinux
+	SELINUX=disabled	
+
+
+7， 设置文件打开数量和用户最大进程数
+	
+	查看文件打开数量        ulimit -a 
+	查看用户最大进程数      ulimit -u
+	vi /etc/security/limits.conf 
+	增加以下内容：
+	* soft nofile 65535
+	* hard nofile 65535
+	* soft nproc 32000
+	* hard nproc 32000 
+	
+	
+8，yum源跟换和添加
+
+   8.1 更换yum 源为163,请执行以下命令
+		cd /etc/yum.repos.d
+		
+		yum install -y wget （下载资源命令）	
+		rename .repo .repo.bak *
+		wget http://mirrors.163.com/.help/CentOS6-Base-163.repo
+		yum clean all
+		yum makecache
+		yum install lrzsz
+		
+	8.2 添加cloudera-manager.repo源 【所有节点都要】
+		cd /etc/yum.repos.d/
+		vi cloudera-manager.repo  添加以下内容后保存退出
+		
+		[cloudera-manager]
+		# Packages for Cloudera Manager, Version 5, on RedHat or CentOS 6 x86_64           	  
+		name=Cloudera Manager
+		baseurl=https://archive.cloudera.com/cm5/redhat/6/x86_64/cm/5/
+		gpgkey =https://archive.cloudera.com/cm5/redhat/6/x86_64/cm/RPM-GPG-KEY-cloudera    
+		gpgcheck = 1
+		
+	
+9，卸载Centos自带的JDK
+	sudo rpm -qa|grep jdk 或 sudo rpm -qa|grep java
+	sudo rpm -e --nodeps xxx yyy zzz	
+	
+10，安装JDK
+	  10.1 安装jdk输入命令：sudo yum install oracle-j2sdk1.7	
+	  10.2 配置环境变量: vi /etc/profile
+	        在文件的末尾添加一下内容
+			export JAVA_HOME=/usr/java/jdk1.7.0_67-cloudera
+			export PATH=$PATH:$JAVA_HOME/bin  
+	   
+	  10.3 执行以下命令
+		（root用户）echo "JAVA_HOME=/usr/java/jdk1.7.0_67-cloudera" >> /etc/environment
+		
+		
+11	设置将 /proc/sys/vm/swappiness 设置为 0 (修改swap空间的swappiness，降低对硬盘的缓存 )
+
+	（root用户）输入：echo "vm.swappiness=0"  >> /etc/sysctl.conf ）		
+		
+12，到这一步，集群公共环境已经准备完毕，开始克隆mini1虚拟机 --->mini2，mini3
+	开始修改mini2-3 四台虚拟机的主机名和ip地址
+	12.1 修改主机名 vi /etc/sysconfig/network		  
+	12.2 修改网络 vi  /etc/sysconfig/network-script/ifcfg-eth0		  
+		删掉UUID  HWADDR
+		配置静态地址
+		然后：
+		rm -rf 　/etc/udev/rules.d/70-persistent-net.rules
+		然后 reboot
+		
+		
+13，集群时间同步（主节点）
+
+	13.1 rpm -qa |grep ntpd 》》没有安装则需要安装此服务 》》yum install ntp
+	 
+	13.2 vi /etc/ntp.conf
+		去掉这个注释，将地址改成网段地址
+		restrict 192.168.80.0 mask 255.255.255.0 nomodify notrap
+		
+		注释掉这几个
+		#server 0.centos.pool.ntp.org iburst
+		#server 1.centos.pool.ntp.org iburst
+		#server 2.centos.pool.ntp.org iburst
+		#server 3.centos.pool.ntp.org iburst
+	
+		添加一下内容
+		server 127.127.1.0
+		fudge  127.127.1.0  stratum 10
+	
+	13.3 vi /etc/sysconfig/ntpd  加入下面一句话，用于配置boot时间和系统时间同步
+		SYNC_HWCLOCK=yes
+	
+	13.4 启动ntpd服务器	
+		sudo service ntpd start
+		sudo service ntpd status
+		chkconfig ntpd on
+		chkconfig --list |grep ntpd
+		
+		
+	13.5 客户机配置（从节点）
+		使用 root用户操作
+		输入 crontab -e 命令进入编辑状态，然后输入一下内容（该任务保存在目录/var/spool/cron　下，必须用root用户才能看到  ）
+		* * * * * /usr/sbin/ntpdate mini1
+
+	
+
+14，配置免密登录
+		******配置主机之间的免密ssh登陆
+		假如 mini1  要登陆  mini2
+		在mini1上操作：
+		%%首先生成密钥对，命令如下：
+		ssh-keygen   (提示时，直接回车即可)		
+		将生产的秘钥copy到mini2上，命令如下
+		ssh-copy-id   mini2 
+		如果出现 ssh-copy-id: command not found 需要执行该命令（yum -y install openssh-clients）
+	
+
+
+三，cdh安装
+
+1，安装mysql（需要root权限）并创建CDH相关的表【只需要在 mini1节点安装】
+
+	1.1	查看CentOS自带mysql是否已安装。
+		输入：sudo yum list installed | grep mysql
+	
+	1.2	若有自带安装的mysql，如何卸载CentOS系统自带mysql数据库？
+		输入：sudo yum -y remove mysql-libs.x86_64，若有多个依赖文件则依次卸载。
+		当结果显示为Complete！即卸载完毕。
+		
+	1.3 查看yum库上的mysql版本信息(CentOS系统需要正常连接网络)。
+		输入：sudo yum list | grep mysql 或 sudo yum -y list mysql*
+		
+	1.4 使用yum安装mysql数据库。
+		输入：sudo yum -y install mysql-server mysql mysql-devel ，命令将：mysql-server、mysql、mysql-devel都安装好，当结果显示为“Complete！”即安装完毕。
+		注：安装mysql只是安装了数据库，只有安装mysql-server才相当于安装了客户端。
+		
+	1.5	设置开机启动:sudo chkconfig mysqld on
+		
+	1.6 启动mysql
+		输入：sudo service mysqld start
+		
+	1.7 修改mysql密码
+	    安装好mysql是没有密码的，需要进行设置，进入msyql将密码修改为你自己的，我这里将密码修改成root
+		输入：mysql -uroot
+		
+		mysql> use mysql; 
+		mysql> update user set password=password('root') where user='root' and host='localhost'; 
+		mysql> flush privileges; 
+	
+	1.8 验证密码是否修改成功
+	    输入：mysql -uroot -proot  能够进入mysql的shell界面，代表成功。
+		
+
+	1.9 修改mysql的访问权限
+		输入：mysql -uroot -proot
+		mysql> grant all privileges on *.* to 'root'@'mini1' identified by 'root';
+		mysql> flush privileges;
+		
+	1.10 创建表cdh相关默认库（也可以后创建）
+		输入命令；mysql -uroot -proot  进入mysql，执行以下sql建库语句		
+		mysql> create database hive DEFAULT CHARSET utf8 COLLATE utf8_general_ci;
+		mysql> create database reports DEFAULT CHARSET utf8 COLLATE utf8_general_ci;
+		mysql> create database navigatoraudit DEFAULT CHARSET utf8 COLLATE utf8_general_ci;
+		mysql> create database navigatormetadata DEFAULT CHARSET utf8 COLLATE utf8_general_ci;
+
+
+	
+	
+3，在主节点【mini1】Cloudera Manager Server ，以下方式随便选择一种【建议选择离线安装】
+	3.1  在线安装sudo yum install cloudera-manager-daemons cloudera-manager-server
+	
+	3.2  离线安装
+		 资源下载地址：https://archive.cloudera.com/cm5/redhat/6/x86_64/cm/5/
+	     上传三个server的资源包到mini1节点上
+		 cloudera-manager-server-5.11.0-1.cm5110.p0.101.el6.x86_64.rpm 
+		 cloudera-manager-server-db-2-5.11.0-1.cm5110.p0.101.el6.x86_64.rpm 
+		 cloudera-manager-daemons-5.11.0-1.cm5110.p0.101.el6.x86_64.rpm
+		 
+		 安装
+		 yum  install -y postgresql-server
+		 rpm -ivh cloudera-manager-daemons-5.11.0-1.cm5110.p0.101.el6.x86_64.rpm 
+		 rpm -ivh cloudera-manager-server-5.11.0-1.cm5110.p0.101.el6.x86_64.rpm 
+		 rpm -ivh cloudera-manager-server-db-2-5.11.0-1.cm5110.p0.101.el6.x86_64.rpm 
+   
+
+4，拷贝mysql的连接驱动【mysql-connector-java-5.1.28.jar】到该目录下 /usr/share/cmf/lib
+
+
+5，在主节点【mini1】初始化CM5的数据库
+   /usr/share/cmf/schema/scm_prepare_database.sh mysql -h localhost -uroot -proot --scm-host localhost scm root root 
+   
+   
+6，上传CHD5大数据服务组件资源包
+   下载地址【我已经下载了，无需再次下载】：http://archive.cloudera.com/cdh5/parcels/latest/   
+    cd /opt/cloudera/parcel-repo
+   上传：CDH-5.11.0-1.cdh5.11.0.p0.34-el6.parcel和CDH-5.11.0-1.cdh5.11.0.p0.34-el6.parcel.sha以及manifest.json 这个目录下 /opt/cloudera/parcel-repo    
+   使用 chmod -R guo+wr xxx 给上述三个文件配置可写可读的权限
+   
+
+7，主节点【mini1】上启动Cloudera Manager Server
+   service cloudera-scm-server start
+   
+8，使用netstat-nltp命令查看【mini1】端口7180 是否启动成功，如果出现这个端口
+   可以使用浏览器访问http://mini1:7180  
+ 
+   
+   
+   
+9，在节点【mini1,mini2,mini3】Cloudera Manager agent ，以下方式随便选择一种【建议选择离线安装】
+	9.1  在线安装 sudo yum install cloudera-manager-agent cloudera-manager-daemons
+	
+	9.2  离线安装
+	     上传三个server的资源包到mini1节点上
+		 cloudera-manager-agent-5.11.0-1.cm5110.p0.101.el6.x86_64.rpm 		
+		 cloudera-manager-daemons-5.11.0-1.cm5110.p0.101.el6.x86_64.rpm
+		 
+		 安装顺序		
+		 yum install -y openssl-devel perl bind-utils libxslt cyrus-sasl-plain cyrus-sasl-gssapi portmap fuse-libs /lib/lsb/init-functions httpd mod_ssl python-psycopg2 MySQL-python
+		 rpm -ivh cloudera-manager-daemons-5.11.0-1.cm5110.p0.101.el6.x86_64.rpm 
+		 rpm -ivh cloudera-manager-agent-5.11.0-1.cm5110.p0.101.el6.x86_64.rpm 	 
+		 
+   
+10，修改agent所在的节点【mini1,mini2,mini3】配置文件config.ini内容
+	sudo vi  /etc/cloudera-scm-agent/config.ini  
+	server_host=mini1 （这里我是以mini1作为server节点）
+	
+	
+11，启动Cloudera Manager
+   在从节点【mini1,mini2,mini3】上启动Cloudera Manager Server
+     sudo service cloudera-scm-agent start     
+  
+  
+  
+  
+四，执行任务 
+	在安装完hdfs，yarn服务时可以模拟执行任务
+	hadoop jar /opt/cloudera/parcels/CDH/lib/hadoop-mapreduce/hadoop-mapreduce-examples.jar pi 10 100
+ 
+五，Clouder Manager Server和agent 安装过程异常情况处理 
+
+1　异常1
+已启用“透明大页面”，它可能会导致重大的性能问题。版本为“CentOS release 6.3 (Final)”且版本为“2.6.32-279.el6.x86_64”的 Kernel 已将 enabled 设置为“[always] never”，并将 defrag 设置为“[always] never”。请运行“echo never > /sys/kernel/mm/redhat_transparent_hugepage/defrag”以禁用此设置，然后将同一命令添加到一个 init 脚本中，如 /etc/rc.local，这样当系统重启时就会设置它 
+（每个节点）
+解决方案
+echo never > /sys/kernel/mm/transparent_hugepage/defrag
+echo never > /sys/kernel/mm/transparent_hugepage/enabled
+echo never >> /etc/rc.local
+
+
+2　异常2
+Cloudera 建议将 /proc/sys/vm/swappiness 设置为 0。当前设置为 60。使用 sysctl 命令在运行时更改该设置并编辑 /etc/sysctl.conf 以在重启后保存该设置。您可以继续进行安装，但可能会遇到问题，Cloudera Manager 报告您的主机由于交换运行状况不佳。以下主机受到影响：
+解决方案：
+echo  0 >  /proc/sys/vm/swappiness
+sysctl vm/swappiness
+echo 'vm.swappiness = 0'>/etc/sysctl.conf
+sysctl -p
+
+
+3　异常3
+pstree: 未找到命令
+解决方案
+yum install -y psmisc
+
+4，找不到jdk
+
+ 输入：sudo vi /etc/sudoers ，在sudoers最后面添加以下内容
+ Defaults env_keep+=JAVA_HOME
+ 
+ 输入：sudo vi /etc/default/bigtop-utils  在 bigtop-utils 文件中添加以下内容
+ export JAVA_HOME=/usr/java/latest
+ 然后执行以下命令
+ source /etc/default/bigtop-utilssource /etc/default/bigtop-utils
+ 
+ 
+5，异常
+如果出现agent主机不良状况
+Error, CM server guid updated, expected 85587073-270d-43d9-a44a-e213d9f7e45b, received 4c1402a5-8364-4598-a382-0c760710e897
+，尝试运行以下命令
+rm -rf /var/lib/cloudera-scm-agent/cm_guid
+之后重启agent
+service cloudera-scm-agent restart
+
+
+
+
+
+
