@@ -1,0 +1,107 @@
+系统环境配置要求
+一、集群规划
+【注意】：至少三个节点，主节点最少6G内存，另外两台至少4G内存，否则安装CDH5会因为环境报各种错误
+
+二、linux环境准备
+1，安装linux centos6.5
+2，配置网络
+2.1：命令：vi/etc/sysconfig/network-scripts/ifcfg-eth0
+修改如下配置（三个节点全部要改）：
+ONBOOT=yes
+BOOTPROTO=static
+IPADDR=192.168.0.203
+GATEWAY=192.168.0.1
+NETMASK=255.255.255.0
+DNS1=114.114.114.114
+2.2：重启网关：命令：service network restart
+2.3：网络检测：ping百度：pingwww.baidu.com
+ 如果能ping通说明网络配置正确（网络不通无法进行后续步骤）
+2.4：配置IP与主机名映射,命令：vi /etc/hosts
+192.168.8.2 PlatformDW001 master
+192.168.8.3 PlatformDW002 slaver1
+192.168.8.4 PlatformDW003 slaver2
+192.168.8.5 PlatformDW004 slaver3
+2.5：禁用IPv6
+ echo "alias net-pf-10 off" >> /etc/modprobe.d/dist.conf
+ echo "alias ipv6 off" >> /etc/modprobe.d/dist.conf
+3，增加普通用户
+ 命令：useradd hadoop（添加用户）
+ 命令：passwd hadoop（修改密码）
+4，配置普通用户的sudo权限
+命令：vi /etc/sudoers
+添加：hadoop ALL=(root)NOPASSWD:ALL
+5，关闭防火墙
+ service iptables stop（暂时关闭）
+ chkconfig iptables off（永久关闭）
+6，禁用Selinux
+ vi /etc/sysconfig/selinux
+ SELINUX=disabled
+7，设置文件打开数量和用户最大进程数
+ 查看文件打开数量 ulimit -a
+ 查看用户最大进程数 ulimit -u
+ vi /etc/security/limits.conf
+ 增加以下内容：
+ * soft nproc 32000
+ * hard nproc 32000
+ * soft nofile 65535
+ * hard nofile 65535
+8，yum源更换和添加
+8.1：更换yum源为163
+第一步：备份你的原镜像文件，以免出错后可以恢复。
+mv/etc/yum.repos.d/CentOS-Base.repo/etc/yum.repos.d/CentOS-Base.repo.backup
+第二步：下载新的CentOS-Base.repo到/etc/yum.repos.d/
+wget-O/etc/yum.repos.d/CentOS-Base.repohttp://mirrors.163.com/.help/CentOS6-Base-163.repo
+第三步：运行yum makecache生成缓存
+yumcleanall
+yummakecache
+yum install lrzsz
+8.2：添加cloudera-manager.repo源
+cd /etc/yum.repos.d/
+vi cloudera-manager.repo 添加以下内容后保存退出
+[cloudera-manager]
+# Packages for Cloudera Manager, Version 5, on RedHat or CentOS 6 x86_64
+name=Cloudera Manager
+baseurl=https://archive.cloudera.com/cm5/redhat/6/x86_64/cm/5/
+gpgkey =https://archive.cloudera.com/cm5/redhat/6/x86_64/cm/RPM-GPG-KEY-cloudera
+gpgcheck = 1
+9，卸载Centos自带的JDK
+sudo rpm -qa|grep jdk 或 sudo rpm -qa|grep java
+sudo rpm -e --nodeps xxx yyy zzz
+10，安装JDK
+10.1 安装jdk输入命令：sudo yum install oracle-j2sdk1.7
+10.2 配置环境变量: vi /etc/profile
+ 在文件的末尾添加一下内容
+ export JAVA_HOME=/usr/java/jdk1.7.0_67-cloudera
+ export PATH=$PATH:$JAVA_HOME/bin
+10.3 执行以下命令
+（root用户）echo "JAVA_HOME=/usr/java/jdk1.7.0_67-cloudera" >> /etc/environment
+11，设置将 /proc/sys/vm/swappiness 设置为 0 (修改swap空间的swappiness，降低对硬盘的缓存 )
+（root用户）输入：echo "vm.swappiness=0" >> /etc/sysctl.conf
+12，集群时间同步（主节点）
+12.1：rpm -qa |grep ntpd
+没有安装则需要安装此服务 ：yum install ntp
+12.2：vi /etc/ntp.conf
+去掉这个注释，将地址改成网段地址
+restrict 192.168.80.0 mask 255.255.255.0 nomodify notrap
+注释掉这几个
+#server 0.centos.pool.ntp.org iburst
+#server 1.centos.pool.ntp.org iburst
+#server 2.centos.pool.ntp.org iburst
+#server 3.centos.pool.ntp.org iburst
+添加一下内容
+server 127.127.1.0
+fudge 127.127.1.0 stratum 10
+12.3： vi /etc/sysconfig/ntpd 加入下面一句话，用于配置boot时间和系统时间同步
+SYNC_HWCLOCK=yes
+12.4 启动ntpd服务器
+sudo service ntpd start
+sudo service ntpd status
+chkconfig ntpd on
+chkconfig --list |grep ntpd
+12.5 客户机配置（从节点）
+使用 root用户操作
+输入 crontab -e 命令进入编辑状态，然后输入一下内容（该任务保存在目录/var/spool/cron　下，必须用root用户才能看到 ）
+* * * * * /usr/sbin/ntpdatePlatformDW001
+13，配置免密登录
+注意：端口是528
+直接和运维沟通，要求各个节点之间配置免密登陆，（因为跳板机缘故，权限问题）
