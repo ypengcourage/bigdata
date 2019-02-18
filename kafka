@@ -1,0 +1,277 @@
+package com.wanyou.gcas
+
+/**
+  * Created by yangpeng on 2018/9/13.
+  */
+
+import java.sql.{DriverManager, PreparedStatement, ResultSet}
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.concurrent.ConcurrentLinkedQueue
+
+import org.apache.hadoop.hbase.client.Put
+import org.apache.kafka.common.TopicPartition
+import org.apache.spark.{SparkConf, TaskContext}
+import org.apache.spark.streaming.kafka010.ConsumerStrategies.Subscribe
+import org.apache.spark.streaming.kafka010.{HasOffsetRanges, KafkaUtils, OffsetRange}
+import org.apache.spark.streaming.kafka010.LocationStrategies.PreferConsistent
+import org.apache.spark.streaming.{Seconds, StreamingContext}
+import redis.clients.jedis.Jedis
+
+
+object SparkStreamingHbase {
+
+
+
+
+
+  def main(args: Array[String]): Unit = {
+
+
+
+    val s_product_low = args(0)
+
+    var n_product_id = 0
+    var n_DB = 0
+    val s_product_up = {
+      if(s_product_low.equals("apcg")){
+        n_product_id = 30
+        n_DB=2
+        "APCG"
+      }else if(s_product_low.equals("palacem2")){
+        n_product_id = 18
+        n_DB=3
+        "PalaceM2"
+      }else if(s_product_low.equals("palacem3")){
+        n_product_id = 26
+        n_DB=4
+        "PalaceM3"
+      }else if(s_product_low.equals("palacem4")){
+        n_product_id = 32
+        n_DB=5
+        "PalaceM4"
+      }
+    }
+
+    val kafkalist = new kafkaJsonTest()
+    val url = s"jdbc:mysql://192.168.0.157:3300/${s_product_up}_gchat_result"
+    val username = "root"
+    val password = "uBRdkSDshbuUVB9u"
+    val getMysqlConnection = ()=>{
+      Class.forName("com.mysql.jdbc.Driver")
+      DriverManager.getConnection(url,username,password)
+    }
+    //获取热词
+
+    //val redisClient = new RedisClient1()
+
+    /** ***************************************************************************************************************
+      * 输入参数
+      */
+    val redisSavaTime = 172800
+    val groupId = s"gcas_gchats_hbase_${s_product_low}"
+    val topic = s"gcas_gchat_${s_product_low}"
+
+
+    val conf = new SparkConf().set("spark.network.timeout","500").set("spark.streaming.kafka.maxRatePerPartition","100")
+      //.setAppName("streaming-kafka").setMaster("local[*]")
+      .set("spark.serializer","org.apache.spark.serializer.KryoSerializer")
+      .set("spark.streaming.kafka.consumer.poll.ms","2000")
+
+    val ssc = new StreamingContext(conf, Seconds(120))
+    ssc.checkpoint(s"/tmp/sparkout/checkpoint/${s_product_low}/hbase/")
+
+
+    /** ***************************************************************************************************************
+      * 准备kafka参数
+      */
+    val topics = Array(topic)
+    val kafkaParams = Map[String, Object](
+      "bootstrap.servers" -> "192.168.0.153:9092,192.168.0.154:9092,192.168.0.155:9092",
+      "key.deserializer" -> "org.apache.kafka.common.serialization.StringDeserializer",
+      "value.deserializer" -> "org.apache.kafka.common.serialization.StringDeserializer",
+      "group.id" -> groupId,
+      "auto.offset.reset" -> "latest",
+      "enable.auto.commit" -> "false"
+    )
+
+
+
+
+    val stream = {
+      val connection = getMysqlConnection()
+      val newOffset = new scala.collection.mutable.HashMap[TopicPartition,Long]
+      val preparedStatement: PreparedStatement = connection.prepareStatement(
+        s"select * from gcas_speech_${s_product_low}_offset" )
+      val result: ResultSet = preparedStatement.executeQuery()
+      while(result.next()){
+        newOffset.put(new TopicPartition(result.getString("s_topic"),result.getInt("n_partition")),result.getLong("n_offest"))
+      }
+      newOffset.foreach(x=>{
+        println(s"[ SparkStreamingHbase ] --------------------------------------------------------------------")
+        println(s"[ SparkStreamingHbase ] topic ${x._1}")
+        // println(s"[ SparkStreamingHbase ] Partition ${x.getInt("n_partition")}")
+        println(s"[ SparkStreamingHbase ] offset ${x._2}")
+        //println(s"[ SparkStreamingHbase ] mysql中取出来的kafka偏移量★★★ $newOffset")
+        println(s"[ SparkStreamingHbase ] --------------------------------------------------------------------")
+      })
+      KafkaUtils.createDirectStream[String, String](ssc, PreferConsistent, Subscribe[String, String](topics, kafkaParams, newOffset))
+    }
+    /** ***************************************************************************************************************
+      * 业务代码部分
+      * 将流中的值取出来,用于计算
+      */
+    val arraydstream = stream.flatMap(x => {
+      kafkalist.json2String(x.value()).toArray()
+    })
+
+    var objectdstreaming = arraydstream.mapPartitions(x => {
+      val regex = "(.*)\\|(.*)\\|(.*)\\|[0-9]{4}\\|(.*)\\|(.*)\\|(.*)\\|(.*)\\|(.*)\\|(.*)\\|(.*)\\|[0-9-]{1}\\|[0-9-]{1,}\\|(.*)\\|(.*)\\|(.*)\\|(.*)\\|(.*)\\|(.*)\\|(.*)\\|(.*)\\|(.*)\\|(.*)\\|(.*)\\|(.*)".r
+      /* */
+      val hotWordList:ConcurrentLinkedQueue[String] = {
+        val connection = getMysqlConnection()
+        val listWord = new ConcurrentLinkedQueue[String]
+        val preparedStatement: PreparedStatement = connection.prepareStatement(
+          "select distinct s_core_words from topic_word" )
+        val result: ResultSet = preparedStatement.executeQuery()
+        while(result.next()){
+          listWord.add(result.getString("s_core_words"))
+        }
+        listWord
+      }
+      //获取正向感情词
+      val positivelist:ConcurrentLinkedQueue[String] = {
+        val connection = getMysqlConnection()
+        val listWord = new ConcurrentLinkedQueue[String]
+        val preparedStatement: PreparedStatement = connection.prepareStatement(
+          "select s_positive_word from positive_list" )
+        val result: ResultSet = preparedStatement.executeQuery()
+        while(result.next()){
+          listWord.add(result.getString("s_positive_word"))
+        }
+        listWord
+      }
+      //获取负向感情词
+      val passivelist:ConcurrentLinkedQueue[String] = {
+        val connection = getMysqlConnection()
+        val listWord = new ConcurrentLinkedQueue[String]
+        val preparedStatement: PreparedStatement = connection.prepareStatement(
+          "select s_passive_word from passive_list" )
+        val result: ResultSet = preparedStatement.executeQuery()
+        while(result.next()){
+          listWord.add(result.getString("s_passive_word"))
+        }
+        listWord
+      }
+      val speechEmotion = new SpeechEmotion(positivelist,passivelist)
+      val speechHotWord = new SpeechHotWord(hotWordList)
+      val result = for (chat <- x) yield {
+        chat match {
+          case regex(n_product_id, n_time, header_time, s_sid, s_opr_id, s_sender, s_sname, n_slv, n_svip, n_ssex, s_type, s_content, s_rsid, s_roprid, s_receiver, s_rname, s_rlv, s_rvip, s_rsex, s_rp, s_rr, send)
+          => {
+            val d_date_time = send.substring(0, 10)
+            val emotion = speechEmotion.emotion(s_content)
+            val s_hotWords = speechHotWord.hotWord(s_content)
+            val emotions = emotion.split("_")
+            val n_emotion = emotions(0).toInt
+            val s_emotion_word = emotions(1)
+            val newtime: Long = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(send).getTime
+            ((n_product_id, d_date_time, s_type, s_sid, n_emotion), (n_time, s_opr_id, s_sender, s_sname, n_slv, n_svip, s_content, s_rsid, s_hotWords, s_receiver, s_rname, s_rp, s_rr, send, newtime / 1000, s_emotion_word))
+          }
+        }
+      }
+      result
+    })
+
+
+
+
+    objectdstreaming.foreachRDD({
+      x => {
+        x.foreachPartition({ a => {
+          val table = HBaseUtils.getTable(s"${s_product_low}_speech")
+          val putList = new java.util.ArrayList[Put]()
+          val jedis = new Jedis("192.168.0.156",6379,60000)
+          jedis.auth("vJLW75GG93Z4do7D")
+          for (chat <- a) {
+            val key1 = chat._1._2+","+chat._1._3+","+chat._1._4
+            val key2 = chat._1._2+","+chat._1._4
+            val value = chat._2._3
+            jedis.select(n_DB)
+            jedis.sadd(key1,value)
+            jedis.sadd(key2,value)
+            jedis.expire(key1,redisSavaTime)
+            jedis.expire(key2,redisSavaTime)
+
+
+            var s_receiver = ""
+            var s_rname = ""
+            if (chat._1._3.toString.equals("private")){
+              s_receiver = chat._2._10.toString
+              s_rname = chat._2._11.toString
+            }else{
+              s_receiver = chat._2._13.toString
+              s_rname = chat._2._12.toString
+            }
+            val put = new Put((chat._1._2 + '-' + chat._1._3 + '-' + chat._1._4 + '-' + chat._2._3 + '-' + (chat._2._15)).getBytes())
+            put.addColumn("details".getBytes(), "s_product_id".getBytes(), chat._1._1.toString.getBytes())
+            put.addColumn("details".getBytes(), "d_date_time".getBytes(), chat._1._2.toString.getBytes())
+            put.addColumn("details".getBytes(), "n_time".getBytes(), chat._2._1.toString.getBytes())
+            put.addColumn("details".getBytes(), "s_sid".getBytes(), chat._1._4.toString.getBytes())
+            put.addColumn("details".getBytes(), "s_type".getBytes(), chat._1._3.toString.getBytes())
+            put.addColumn("details".getBytes(), "n_svip".getBytes(), chat._2._6.toString.getBytes())
+            put.addColumn("details".getBytes(), "s_sender".getBytes(), chat._2._3.toString.getBytes())
+            put.addColumn("details".getBytes(), "s_sname".getBytes(), chat._2._4.toString.getBytes())
+            put.addColumn("details".getBytes(), "n_slv".getBytes(), chat._2._5.toString.getBytes())
+            put.addColumn("details".getBytes(), "s_content".getBytes(), chat._2._7.toString.getBytes())
+            put.addColumn("details".getBytes(), "s_receiver".getBytes(),s_receiver.getBytes())
+            put.addColumn("details".getBytes(), "s_rname".getBytes(), s_rname.getBytes())
+            put.addColumn("details".getBytes(), "d_send".getBytes(), chat._2._15.toString.getBytes())
+            put.addColumn("details".getBytes(), "n_emotion".getBytes(), chat._1._5.toString.getBytes())
+            put.addColumn("details".getBytes(), "s_emotion_word".getBytes(), chat._2._16.getBytes())
+            putList.add(put)
+          }
+          jedis.close()
+          table.put(putList)
+        }
+        })
+      }
+    })
+    stream.foreachRDD {
+      rdd =>{
+        val offsetRanges = rdd.asInstanceOf[HasOffsetRanges].offsetRanges
+        rdd.foreachPartition {
+          iter =>
+            val o: OffsetRange = offsetRanges(TaskContext.get.partitionId)
+            println(s"[ SparkStreamingHbase ] --------------------------------------------------------------------")
+            println(s"[ SparkStreamingHbase ]  topic: ${o.topic}")
+            println(s"[ SparkStreamingHbase ]  partition: ${o.partition} ")
+            println(s"[ SparkStreamingHbase ]  fromOffset 开始偏移量: ${o.fromOffset} ")
+            println(s"[ SparkStreamingHbase ]  untilOffset 结束偏移量: ${o.untilOffset} 需要保存的偏移量,供下次读取使用★★★")
+            println(s"[ SparkStreamingHbase ] --------------------------------------------------------------------")
+            //写入到mysql中
+            val connection = getMysqlConnection()
+            val sql = s"update gcas_speech_${s_product_low}_offset set n_offest=? where s_topic=? and s_groupid=? and n_partition=?"
+            val preparedStatement = connection.prepareStatement(sql)
+            preparedStatement.setLong(1,o.untilOffset)
+            preparedStatement.setString(2,o.topic)
+            preparedStatement.setString(3,groupId)
+            preparedStatement.setInt(4,o.partition)
+            preparedStatement.addBatch()
+            preparedStatement.executeBatch()
+            connection.close()
+        }
+        rdd.unpersist()
+      }
+    }
+
+
+    /** ***************************************************************************************************************
+      * spark streaming 开始工作
+      */
+    ssc.start()
+    ssc.awaitTermination()
+  }
+
+
+}
