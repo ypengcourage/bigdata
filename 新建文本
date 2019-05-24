@@ -1,0 +1,236 @@
+oozie.action.sharelib.for.spark
+spark2 
+
+yarn application -list
+yarn application -kill application_1437456051228_1725
+
+
+
+
+
+oozie admin -oozie http://180.97.153.153:11000/oozie -sharelibupdate
+/opt/cloudera/parcels/CDH-5.12.0-1.cdh5.12.0.p0.29/jars/spark-lineage_2.10-1.6.0-cdh5.12.0.jar
+
+spark2-submit --class com.wanyou.gcas.SparkStreamingHbase --master yarn \
+--deploy-mode cluster --name palacem2_streaming_hbase \
+--num-executors 2 --executor-memory 1G --driver-memory 1G \
+/tmp/spark2_lib/GCAS2StreamingHbase.jar palacem2 $
+
+spark2-submit --class com.wanyou.gcas.SparkStreamingHbase --master yarn \
+--deploy-mode cluster --name palacem4_streaming_hbase \
+--num-executors 3 --executor-memory 1G --driver-memory 1G \
+/tmp/spark2_lib/GCAS2StreamingHbase.jar  palacem4 $
+
+spark2-submit --class com.wanyou.gcas.SparkStreamingHbase --master yarn \
+--deploy-mode cluster --name apcg_streaming_hbase \
+--num-executors 3 --executor-memory 1G --driver-memory 1G \
+/tmp/spark2_lib/GCAS2StreamingHbase.jar apcg $
+
+
+spark2-submit --class com.wanyou.gcas.SparkStreamingHbase --master yarn \
+--deploy-mode cluster --name palacem3_streaming_hbase \
+--num-executors 2 --executor-memory 1G --driver-memory 1G \
+/tmp/spark2_lib/GCAS2StreamingHbase.jar palacem3 $
+
+
+spark2-submit --class com.wanyou.gcas.sparkStreamingTest --master yarn  \
+--deploy-mode cluster --num-executors 4 --executor-memory 2G \
+--name apcg_streaming_word /tmp/spark2_lib/GCAS2SparkStreaming.jar apcg $
+
+spark2-submit --class com.wanyou.gcas.sparkStreamingTest --master yarn \
+ --deploy-mode cluster --num-executors 4--executor-memory 1G --name palacem2_streaming_word \
+/tmp/spark2_lib/GCAS2SparkStreaming.jar palacem2 $
+
+spark2-submit --class com.wanyou.gcas.sparkStreamingTest --master yarn \
+--deploy-mode cluster --num-executors 4 --name palacem3_streaming_word \
+/tmp/spark2_lib/GCAS2SparkStreaming.jar palacem3 $
+
+spark2-submit --class com.wanyou.gcas.sparkStreamingTest --master yarn \
+ --deploy-mode cluster --num-executors 4 --executor-memory 2G \
+ --name palacem4_streaming_word /tmp/spark2_lib/GCAS2SparkStreaming.jar palacem4 $
+
+
+
+
+htrace-core-3.0.4.jar
+htrace-core4-4.0.1-incubating.jar
+
+
+--executor-memory 3G --driver-cores 4 --total-executor-cores 12 --num-executors 3 --executor-cores 4 --
+
+spark.default.parallelism 10
+--num-executors 4 --executor-memory 2G
+
+pm2 reload 
+
+
+SELECT DISTINCT d_time FROM `201811_steaming_speech_count` ORDER BY d_time DESC
+
+Warning:scalac: there was one deprecation warning; re-run with -deprecation for details
+
+
+cp /opt/cloudera/parcels/CDH-5.12.0-1.cdh5.12.0.p0.29/jars/htrace-core4-4.0.1-incubating.jar    
+
+/opt/cloudera/parcels/SPARK2/lib/spark2/jars/
+vim /opt/cloudera/parcels/SPARK2/etc/spark2/conf.dist/classpath.txt
+vim /opt/cloudera/parcels/SPARK2/lib/spark2/conf/classpath.txt
+
+2026032
+/opt/cloudera/parcels/CDH-5.12.0-1.cdh5.12.0.p0.29/jars/kafka-clients-0.10.2-kafka-2.2.0.jar
+/opt/cloudera/parcels/CDH-5.12.0-1.cdh5.12.0.p0.29/jars/kafka_2.11-0.10.2-kafka-2.2.0.jar
+
+
+CDH_SQOOP_HOME
+/opt/cloudera/parcels/CDH-5.12.0-1.cdh5.12.0.p0.29/lib/sqoop
+
+mysql -P 3300 -uroot -puBRdkSDshbuUVB9u
+
+hdfs fsck /gchat/events/18-06/05 -openforwrite
+
+<delete><query>*:*</query></delete><commit/> 
+d_date_time:2018-08-01
+<delete><query>id:2018-07-13*</query></delete><commit/> 
+
+netstat -lntp | grep 8020
+
+ps -ef | grep yarn
+
+ps -aux | grep Flume_00
+
+chmod -R guo+wrx xxx
+
+sudo -u hdfs hdfs balancer
+
+
+2018-07-31-complex_apcg-301000001-12090001-1533029639
+2018-07-31-union-302395156-9845156-1533016943
+
+dfs.client.use.datanode.hostname
+
+
+yum install -y python-lxml
+yum install libxml2-python
+
+
+
+/usr/bin/kafka-topics --zookeeper platformDW-master:2181 --list
+/usr/bin/kafka-topics --create --zookeeper platformDW-master:2181 --replication-factor 2 --partitions 4 --topic 
+
+gcas_gchat_palacem2
+/usr/bin/kafka-console-consumer --zookeeper platformDW-master:2181,platformDW-slave01:2181 --topic 
+
+gcas_gchat_apcg
+
+
+kafka-topics --delete --zookeeper platformDW001:2181,platformDW002:2181 --topic palacem2
+zookeeper-client -server platformDW001:2181,platformDW002:2181
+
+(yangpeng,(1,1,1,1,1,1,1,1,1,1,1,1,1,1))
+
+spark2-submit --class com.wanyou.gcas82.sparkStreamingTest --master yarn  --deploy-mode client --num-executors 
+
+4 --executor-memory 1G --name palacem2_streaming_word /tmp/sparkJar/gcasWordStreaming.jar palacem2 $
+
+
+listeners=PLAINTEXT://0.0.0.0:9092
+advertised.listeners=PLAINTEXT://180.97.153.156:9092
+advertised.host.name=platformdw-slave03
+advertised.port=9092
+
+
+<property>
+<name>hive.aux.jars.path</name>
+<value>file:///opt/cloudera/parcels/CDH-5.12.0-1.cdh5.12.0.p0.29/lib/hbase/lib/hive-hbase-handler-1.1.0-
+
+cdh5.12.0.jar,file:///opt/cloudera/parcels/CDH-5.12.0-
+
+1.cdh5.12.0.p0.29/lib/hbase/lib/hbase.jar,file:///opt/cloudera/parcels/CDH-5.12.0-
+
+1.cdh5.12.0.p0.29/lib/hbase/lib/zookeeper.jar</value>
+</property>
+
+
+/opt/cloudera/parcels/CDH-5.12.0-1.cdh5.12.0.p0.29/jars/hbase-common-1.2.0-cdh5.12.0.jar
+
+
+ps -aux | grep Flume_00
+
+oozie.use.system.libpath
+true
+
+
+
+
+
+SELECT s_content,count(*) ccc from todayspeech where s_product_id='30' and length(s_content )>5 and s_content 
+
+not rlike '[￡?0-9_#\\[\\]]{6,18}' GROUP BY s_content ORDER BY ccc desc;
+
+
+
+hive -e "set hive.cli.print.header=true; select * from acc_imprest" | sed 's/[\t]/,/g'  > acc_imprest.csv
+
+
+
+/user/oozie/share/lib/lib_20180201160625/spark/kafka_2.10-0.9.0-kafka-2.0.2.jar
+/user/oozie/share/lib/lib_20180201160625/spark/kafka_2.10-0.9.0-kafka-2.0.2.jar
+
+
+
+
+[desktop]
+app_blacklist=
+
+[spark]
+server_url=http://platformDW-master:8998/
+
+languages='[{"name": "Scala", "type": "scala"},{"name": "Python", "type": "python"},{"name": "Impala SQL", 
+
+"type": "impala"},{"name": "Hive SQL", "type": "hive"},{"name": "Text", "type": "text"}]'
+
+
+GdrsAgent.sinks.k4.type = org.apache.flume.sink.kafka.KafkaSink
+GdrsAgent.sinks.k4.kafka.topic = gcas_gchat_palacem2
+GdrsAgent.sinks.k4.kafka.bootstrap.servers = 180.97.153.153:9092,180.97.153.154:9092,180.97.153.155:9092
+GdrsAgent.sinks.k4.useFlumeEventFormat= true
+
+
+truncate 
+tar -czvf
+tar -xzvf 
+
+
+
+
+CREATE TABLE hive_site(key string, name string, score string, date int)    
+STORED BY 'org.apache.hadoop.hive.hbase.HBaseStorageHandler'  
+WITH SERDEPROPERTIES ("hbase.columns.mapping" = ":key,details:name,details:score,details:date")   
+TBLPROPERTIES ("hbase.table.name" = "hbase_site");
+
+
+
+
+export --connect  jdbc:mysql://192.168.8.4:3306/APCG_gchat_result  --username root --password root --table 
+
+${yyyymm}_speech_count --hcatalog-database default --hcatalog-table APCG_todayspeechcount
+
+
+
+
+hue的load balancer 这个问题 我也遇见过 是这样解决的
+需要提前安装环境
+Httpd
+Mod_ssl
+利用yum install 安装上面目录 即可启动
+一般是因为系统中没有httpd 和ssl mod 的服务 yum下载即可
+
+
+
+
+
+
+
+json对象转换为json字符串使用 JSON.stringify(jsonObj)
+json字符串转换为json对象使用 JSON.parse(string)
+
+
